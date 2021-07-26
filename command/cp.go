@@ -76,7 +76,7 @@ Examples:
 
 	13. Perform KMS-SSE of the object(s) at the destination using customer managed Customer Master Key (CMK) key id
 		> s5cmd {{.HelpName}} --sse aws:kms --sse-kms-key-id <your-kms-key-id> s3://bucket/object s3://target-bucket/prefix/object
-	
+
 	14. Force transfer of GLACIER objects with a prefix whether they are restored or not
 		> s5cmd {{.HelpName}} --force-glacier-transfer s3://bucket/prefix/* target-directory/
 `
@@ -146,6 +146,10 @@ var copyCommandFlags = []cli.Flag{
 		Name:  "destination-region",
 		Usage: "set the region of destination bucket: the region of the destination bucket will be automatically discovered if --destination-region is not specified",
 	},
+	&cli.BoolFlag{
+		Name:  "raw",
+		Usage: "disable the wildcard operations, useful with filenames that contains glob characters.",
+	},
 }
 
 var copyCommand = &cli.Command{
@@ -183,6 +187,7 @@ var copyCommand = &cli.Command{
 			encryptionKeyID:      c.String("sse-kms-key-id"),
 			acl:                  c.String("acl"),
 			forceGlacierTransfer: c.Bool("force-glacier-transfer"),
+			raw:                  c.Bool("raw"),
 			// region settings
 			srcRegion: c.String("source-region"),
 			dstRegion: c.String("destination-region"),
@@ -212,6 +217,7 @@ type Copy struct {
 	encryptionKeyID      string
 	acl                  string
 	forceGlacierTransfer bool
+	raw                  bool
 
 	// region settings
 	srcRegion string
@@ -231,13 +237,18 @@ increase the open file limit or try to decrease the number of workers with
 
 // Run starts copying given source objects to destination.
 func (c Copy) Run(ctx context.Context) error {
-	srcurl, err := url.New(c.src)
+	var urlOptions []url.Option
+	if c.raw {
+		urlOptions = append(urlOptions, url.WithMode(url.RawMode))
+	}
+
+	srcurl, err := url.New(c.src, urlOptions...)
 	if err != nil {
 		printError(c.fullCommand, c.op, err)
 		return err
 	}
 
-	dsturl, err := url.New(c.dst)
+	dsturl, err := url.New(c.dst, urlOptions...)
 	if err != nil {
 		printError(c.fullCommand, c.op, err)
 		return err
@@ -713,12 +724,17 @@ func validateCopyCommand(c *cli.Context) error {
 	src := c.Args().Get(0)
 	dst := c.Args().Get(1)
 
-	srcurl, err := url.New(src)
+	var urlOptions []url.Option
+	if c.Bool("raw") {
+		urlOptions = append(urlOptions, url.WithMode(url.RawMode))
+	}
+
+	srcurl, err := url.New(src, urlOptions...)
 	if err != nil {
 		return err
 	}
 
-	dsturl, err := url.New(dst)
+	dsturl, err := url.New(dst, urlOptions...)
 	if err != nil {
 		return err
 	}
@@ -759,12 +775,11 @@ func validateCopy(srcurl, dsturl *url.URL) error {
 }
 
 func validateUpload(ctx context.Context, srcurl, dsturl *url.URL, storageOpts storage.Options) error {
-	srcclient := storage.NewLocalClient(storageOpts)
-
 	if srcurl.HasGlob() {
 		return nil
 	}
 
+	srcclient := storage.NewLocalClient(storageOpts)
 	obj, err := srcclient.Stat(ctx, srcurl)
 	if err != nil {
 		return err

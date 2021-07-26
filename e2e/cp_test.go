@@ -2990,60 +2990,6 @@ func TestCopyLocalObjectstoS3WithRawFlag(t *testing.T) {
 
 }
 
-// When folder is uploaded with --raw flag, it gives an error.
-func TestCopyDirS3RawTrueFailure(t *testing.T) {
-
-	if runtime.GOOS == "windows" {
-		t.Skip()
-	}
-
-	t.Parallel()
-
-	bucket := s3BucketFromTestName(t)
-
-	s3client, s5cmd, cleanup := setup(t)
-	defer cleanup()
-
-	createBucket(t, s3client, bucket)
-
-	folderLayout := []fs.PathOp{
-		fs.WithDir(
-			"a*",
-			fs.WithFile("file.txt", "content"),
-			fs.WithFile("file1.txt", "content"),
-		),
-		fs.WithDir(
-			"a*b",
-			fs.WithFile("file2.txt", "content"),
-			fs.WithFile("file3.txt", "content"),
-		),
-
-		fs.WithFile("file4.txt", "content"),
-	}
-
-	workdir := fs.NewDir(t, t.Name(), folderLayout...)
-	defer workdir.Remove()
-
-	srcpath := filepath.ToSlash(workdir.Join("a*"))
-	dstpath := fmt.Sprintf("s3://%v", bucket)
-
-	cmd := s5cmd("cp", "--raw", srcpath, dstpath)
-	result := icmd.RunCmd(cmd)
-
-	result.Assert(t, icmd.Expected{ExitCode: 1})
-
-	// assert no files are in S3
-	objs := []string{"a*/file.txt", "a*/file1.txt", "a*b/file2.txt", "a*b/file3.txt", "file.txt", "file1.txt", "file2.txt", "file3.txt", "file4.txt"}
-	for _, obj := range objs {
-		err := ensureS3Object(s3client, bucket, obj, "content")
-		assertError(t, err, errS3NoSuchKey)
-	}
-
-	// assert local filesystem
-	expected := fs.Expected(t, folderLayout...)
-	assert.Assert(t, fs.Equal(workdir.Path(), expected))
-}
-
 func TestCopyS3ObjectstoLocalWithRawFlag(t *testing.T) {
 
 	if runtime.GOOS == "windows" {

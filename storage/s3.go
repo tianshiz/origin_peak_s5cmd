@@ -58,6 +58,7 @@ type S3 struct {
 	uploader    s3manageriface.UploaderAPI
 	endpointURL urlpkg.URL
 	dryRun      bool
+	v1Enabled   bool
 }
 
 func parseEndpoint(endpoint string) (urlpkg.URL, error) {
@@ -95,6 +96,7 @@ func newS3Storage(ctx context.Context, opts Options) (*S3, error) {
 		uploader:    s3manager.NewUploader(awsSession),
 		endpointURL: endpointURL,
 		dryRun:      opts.DryRun,
+		v1Enabled:   opts.APIv1Enabled,
 	}, nil
 }
 
@@ -126,6 +128,9 @@ func (s *S3) Stat(ctx context.Context, url *url.URL) (*Object, error) {
 // it sends these errors to object channel.
 func (s *S3) List(ctx context.Context, url *url.URL, _ bool) <-chan *Object {
 	if isGoogleEndpoint(s.endpointURL) {
+		return s.listObjects(ctx, url)
+	}
+	if s.v1Enabled {
 		return s.listObjects(ctx, url)
 	}
 	return s.listObjectsV2(ctx, url)
@@ -835,6 +840,10 @@ func setSessionRegion(ctx context.Context, sess *session.Session, bucket string)
 
 	// auto-detection
 	region, err := s3manager.GetBucketRegion(ctx, sess, bucket, "", func(r *request.Request) {
+		// s3manager.GetBucketRegion uses Path style addressing and
+		// AnonymousCredentials by default, updating Request's Config to match
+		// the session config.
+		r.Config.S3ForcePathStyle = sess.Config.S3ForcePathStyle
 		r.Config.Credentials = sess.Config.Credentials
 	})
 	if err != nil {

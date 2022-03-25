@@ -69,6 +69,10 @@ var app = &cli.App{
 			Name:  "no-sign-request",
 			Usage: "do not sign requests: credentials will not be loaded if --no-sign-request is provided",
 		},
+		&cli.BoolFlag{
+			Name:  "use-v1-api",
+			Usage: "enable backward compatibility with ListObjects API and disable ListObjectsV2 API",
+		},
 	},
 	Before: func(c *cli.Context) error {
 		retryCount := c.Int("retry-count")
@@ -82,7 +86,7 @@ var app = &cli.App{
 
 		if retryCount < 0 {
 			err := fmt.Errorf("retry count cannot be a negative value")
-			printError(givenCommand(c), c.Command.Name, err)
+			printError(commandFromContext(c), c.Command.Name, err)
 			return err
 		}
 
@@ -139,6 +143,7 @@ func NewStorageOpts(c *cli.Context) storage.Options {
 		NoVerifySSL:   c.Bool("no-verify-ssl"),
 		DryRun:        c.Bool("dry-run"),
 		NoSignRequest: c.Bool("no-sign-request"),
+		APIv1Enabled:  c.Bool("use-v1-api"),
 	}
 }
 
@@ -154,8 +159,8 @@ func Commands() []*cli.Command {
 		NewSizeCommand(),
 		NewCatCommand(),
 		NewRunCommand(),
-		NewVersionCommand(),
 		NewSyncCommand(),
+		NewVersionCommand(),
 	}
 }
 
